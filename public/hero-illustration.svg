@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect width="800" height="600" fill="#F8FAFC"/>
+    
+    <!-- Main window frame -->
+    <rect x="100" y="50" width="600" height="500" rx="12" fill="white" stroke="#E2E8F0" stroke-width="2"/>
+    
+    <!-- Header bar -->
+    <rect x="100" y="50" width="600" height="40" rx="12" fill="#F1F5F9"/>
+    <circle cx="130" cy="70" r="6" fill="#FDA4AF"/>
+    <circle cx="150" cy="70" r="6" fill="#FCD34D"/>
+    <circle cx="170" cy="70" r="6" fill="#86EFAC"/>
+    
+    <!-- Content area -->
+    <rect x="120" y="110" width="200" height="30" rx="6" fill="#E2E8F0"/>
+    <rect x="120" y="150" width="560" height="2" fill="#E2E8F0"/>
+    
+    <!-- Question area -->
+    <rect x="120" y="170" width="560" height="100" rx="6" fill="#F1F5F9"/>
+    <rect x="140" y="190" width="520" height="10" rx="2" fill="#CBD5E1"/>
+    <rect x="140" y="210" width="480" height="10" rx="2" fill="#CBD5E1"/>
+    <rect x="140" y="230" width="500" height="10" rx="2" fill="#CBD5E1"/>
+    
+    <!-- Options -->
+    <rect x="120" y="290" width="560" height="60" rx="6" fill="#F8FAFC"/>
+    <rect x="140" y="310" width="520" height="20" rx="4" fill="#E2E8F0"/>
+    
+    <rect x="120" y="360" width="560" height="60" rx="6" fill="#F8FAFC"/>
+    <rect x="140" y="380" width="520" height="20" rx="4" fill="#E2E8F0"/>
+    
+    <rect x="120" y="430" width="560" height="60" rx="6" fill="#F8FAFC"/>
+    <rect x="140" y="450" width="520" height="20" rx="4" fill="#E2E8F0"/>
+    
+    <!-- Timer -->
+    <circle cx="650" cy="70" r="15" stroke="#3B82F6" stroke-width="2"/>
+    <path d="M650 60 L650 70 L660 70" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+</svg> 
