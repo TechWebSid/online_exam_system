@@ -32,6 +32,16 @@ const userSchema = new mongoose.Schema({
         enum: ['student', 'admin'],
         default: 'student'
     },
+    faceAuthStatus: {
+        isRegistered: {
+            type: Boolean,
+            default: false
+        },
+        lastVerified: {
+            type: Date,
+            default: null
+        }
+    },
     createdAt: {
         type: Date,
         default: Date.now

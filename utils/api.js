@@ -122,4 +122,108 @@ export async function promoteToAdmin(studentId) {
     } catch (error) {
         throw new Error(error.message || 'Failed to promote student');
     }
+}
+
+export async function registerFace(imageData) {
+    try {
+        console.log('Registering face, image data length:', imageData.length);
+        
+        const response = await fetch(`${API_BASE_URL}/face-auth/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ image: imageData }),
+        });
+
+        const data = await response.json();
+        console.log('Face registration response:', data);
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Face registration failed');
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Error in registerFace:', error);
+        throw new Error(error.message || 'Face registration failed');
+    }
+}
+
+export async function verifyFace(imageData, userId = null) {
+    try {
+        console.log('Verifying face, image data length:', imageData.length);
+        console.log('UserId for verification:', userId);
+        
+        const body = { image: imageData };
+        if (userId) {
+            body.userId = userId;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/face-auth/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+        console.log('Face verification API response:', data);
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Face verification failed');
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Error in verifyFace:', error);
+        throw new Error(error.message || 'Face verification failed');
+    }
+}
+
+export async function monitorFace(imageData) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/face-auth/monitor`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ image: imageData }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Face monitoring failed');
+        }
+
+        return data;
+    } catch (error) {
+        throw new Error(error.message || 'Face monitoring failed');
+    }
+}
+
+export async function getFaceAuthStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/face-auth/status`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to get face auth status');
+        }
+
+        return data;
+    } catch (error) {
+        throw new Error(error.message || 'Failed to get face auth status');
+    }
 } 

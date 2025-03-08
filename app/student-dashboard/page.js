@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ExamCard from '@/components/student/ExamCard';
 import ExamAttempt from '@/components/student/ExamAttempt';
 import ExamResult from '@/components/student/ExamResult';
@@ -15,6 +16,7 @@ export default function StudentDashboard() {
     const [examResult, setExamResult] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [user, setUser] = useState(null);
 
     useEffect(() => {
         const checkAuthAndFetchExams = async () => {
@@ -91,16 +93,18 @@ export default function StudentDashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-100">
-            <header className="bg-white shadow">
-                <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                    <h1 className="text-3xl font-bold text-gray-900">
-                        Student Dashboard
-                    </h1>
+        <div className="min-h-screen bg-gray-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">Student Dashboard</h1>
+                    <Link 
+                        href="/student-dashboard/profile"
+                        className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                    >
+                        My Profile
+                    </Link>
                 </div>
-            </header>
 
-            <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 {error && (
                     <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
                         {error}
@@ -136,7 +140,7 @@ export default function StudentDashboard() {
                         )}
                     </div>
                 )}
-            </main>
+            </div>
         </div>
     );
 } 

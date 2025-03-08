@@ -44,11 +44,15 @@ const registerUser = async (req, res) => {
             res.status(201).json({
                 success: true,
                 user: {
-                    id: user._id,
+                    _id: user._id,
                     fullName: user.fullName,
                     username: user.username,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
+                    faceAuthStatus: {
+                        isRegistered: false,
+                        lastVerified: null
+                    }
                 }
             });
         }
@@ -109,11 +113,15 @@ const loginUser = async (req, res) => {
         res.json({
             success: true,
             user: {
-                id: user._id,
+                _id: user._id,
                 fullName: user.fullName,
                 username: user.username,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                faceAuthStatus: user.faceAuthStatus || {
+                    isRegistered: false,
+                    lastVerified: null
+                }
             }
         });
     } catch (error) {
@@ -150,11 +158,15 @@ const getUserProfile = async (req, res) => {
             res.json({
                 success: true,
                 user: {
-                    id: user._id,
+                    _id: user._id,
                     fullName: user.fullName,
                     username: user.username,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
+                    faceAuthStatus: user.faceAuthStatus || {
+                        isRegistered: false,
+                        lastVerified: null
+                    }
                 }
             });
         } else {

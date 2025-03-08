@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { registerUser } from '@/utils/api';
+import { registerUser, registerFace } from '@/utils/api';
+import FaceCapture from '@/components/FaceCapture';
 
 export function SignupForm() {
     const router = useRouter();
@@ -23,6 +24,10 @@ export function SignupForm() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showFaceCapture, setShowFaceCapture] = useState(false);
+    const [capturedImage, setCapturedImage] = useState(null);
+    const [registeredUser, setRegisteredUser] = useState(null);
+    const [faceRegistrationComplete, setFaceRegistrationComplete] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -101,8 +106,9 @@ export function SignupForm() {
         setError('');
 
         try {
-            await registerUser(formData);
-            router.push('/login?registered=true');
+            const response = await registerUser(formData);
+            setRegisteredUser(response.user);
+            setShowFaceCapture(true);
         } catch (error) {
             setError(error.message);
         } finally {
@@ -110,6 +116,145 @@ export function SignupForm() {
         }
     };
 
+    const handleFaceCapture = (imageSrc) => {
+        setCapturedImage(imageSrc);
+    };
+
+    const handleRetakePhoto = () => {
+        setCapturedImage(null);
+    };
+
+    const handleRegisterFace = async () => {
+        if (!capturedImage || !registeredUser) {
+            setError('Please capture your face image first');
+            return;
+        }
+
+        setIsLoading(true);
+        setError('');
+
+        try {
+            console.log('Registering face for user:', registeredUser._id);
+            console.log('Image data length:', capturedImage.length);
+            
+            const response = await registerFace(capturedImage);
+            console.log('Face registration response:', response);
+            
+            if (response.success) {
+                setFaceRegistrationComplete(true);
+                
+                // Redirect to login after a short delay
+                setTimeout(() => {
+                    router.push('/login?registered=true');
+                }, 2000);
+            } else {
+                setError(response.message || 'Failed to register face');
+            }
+        } catch (error) {
+            console.error('Error registering face:', error);
+            setError(error.message || 'Failed to register face');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // If face registration is complete, show success message
+    if (faceRegistrationComplete) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-gray-50 to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg text-center">
+                    <div className="text-green-600">
+                        <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <h2 className="text-2xl font-bold mt-4">Registration Complete!</h2>
+                        <p className="mt-2">Your account has been created successfully with face authentication.</p>
+                        <p className="mt-4 text-gray-600">Redirecting to login page...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // If showing face capture screen
+    if (showFaceCapture) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-gray-50 to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
+                    <div className="text-center">
+                        <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                            Face Registration
+                        </h2>
+                        <p className="text-gray-600">
+                            Please register your face for secure authentication
+                        </p>
+                    </div>
+
+                    {error && (
+                        <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                            <p className="text-red-700">{error}</p>
+                        </div>
+                    )}
+
+                    <div className="mt-6">
+                        {capturedImage ? (
+                            <div className="space-y-6">
+                                <div className="relative">
+                                    <img
+                                        src={capturedImage}
+                                        alt="Captured face"
+                                        className="rounded-lg mx-auto border-2 border-gray-300"
+                                        width={320}
+                                        height={240}
+                                    />
+                                </div>
+                                <div className="flex justify-center space-x-4">
+                                    <button
+                                        onClick={handleRetakePhoto}
+                                        className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                                        disabled={isLoading}
+                                    >
+                                        Retake Photo
+                                    </button>
+                                    <button
+                                        onClick={handleRegisterFace}
+                                        className={`px-4 py-2 rounded-md ${
+                                            isLoading
+                                                ? 'bg-gray-400 cursor-not-allowed'
+                                                : 'bg-blue-500 hover:bg-blue-600'
+                                        } text-white`}
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading ? 'Registering...' : 'Register Face'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <FaceCapture
+                                    onCapture={handleFaceCapture}
+                                    buttonText="Capture Face"
+                                    width={320}
+                                    height={240}
+                                />
+                                <div className="text-sm text-gray-600">
+                                    <h3 className="font-semibold mb-2">Instructions:</h3>
+                                    <ul className="list-disc pl-5 space-y-1">
+                                        <li>Ensure your face is clearly visible and well-lit</li>
+                                        <li>Remove glasses, hats, or other accessories</li>
+                                        <li>Look directly at the camera</li>
+                                        <li>Keep a neutral expression</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Original signup form
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-gray-50 to-blue-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">

@@ -15,7 +15,7 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));  // Increased limit for base64 images
 app.use(cookieParser());
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -26,6 +26,7 @@ app.use(cors({
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/student', require('./routes/studentRoutes'));
+app.use('/api/face-auth', require('./routes/faceAuthRoutes'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
