@@ -51,13 +51,13 @@ export default function ExamsTable({ exams, onEdit, onDelete, onToggleStatus }) 
                                     {exam.title}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {exam.subject.name}
+                                    {exam.subject?.name || 'No Subject'}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                     {exam.duration} mins
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {exam.questions.length}
+                                    {exam.questions?.length || 0}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span
@@ -115,13 +115,13 @@ export default function ExamsTable({ exams, onEdit, onDelete, onToggleStatus }) 
                                             <div>
                                                 <h4 className="text-sm font-medium text-gray-900">Questions:</h4>
                                                 <div className="mt-2 space-y-4">
-                                                    {exam.questions.map((question, qIndex) => (
+                                                    {exam.questions && exam.questions.map((question, qIndex) => (
                                                         <div key={question._id} className="bg-white p-4 rounded-lg shadow-sm">
                                                             <p className="text-sm font-medium text-gray-900">
                                                                 {qIndex + 1}. {question.text}
                                                             </p>
                                                             <div className="mt-2 space-y-2">
-                                                                {question.options.map((option, oIndex) => (
+                                                                {question.options && question.options.map((option, oIndex) => (
                                                                     <div
                                                                         key={oIndex}
                                                                         className={`text-sm ${

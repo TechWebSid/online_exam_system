@@ -9,12 +9,34 @@ from flask_cors import CORS
 from pymongo import MongoClient
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
+# import face_recognition  # Comment out as we're using the simplified version
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+# Custom JSON encoder to handle non-serializable types
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, bool):
+            return bool(obj)
+        if isinstance(obj, (int, float)):
+            return float(obj) if isinstance(obj, float) else int(obj)
+        if obj is None:
+            return None
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, 
+                           np.uint8, np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        if isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return super(CustomJSONEncoder, self).default(obj)
+
 app = Flask(__name__)
+app.json_encoder = CustomJSONEncoder  # Use custom JSON encoder
 CORS(app, origins=os.getenv('ALLOWED_ORIGINS', '*').split(','))
 
 # MongoDB connection
@@ -25,6 +47,18 @@ collection_name = os.getenv('COLLECTION_NAME', 'face_data')
 client = MongoClient(mongo_uri)
 db = client[db_name]
 face_collection = db[collection_name]
+
+# Store previous face data for movement detection
+face_data_cache = {}
+# Store consecutive movement counts for each session
+movement_counts = {}
+# Movement threshold - calibrated for the new comparison method
+MOVEMENT_THRESHOLD = 0.15  # Lower threshold for the new method
+MAX_CONSECUTIVE_MOVEMENTS = 3  # Require 3 consecutive movements
+# Store recent movement values for stabilization
+recent_movements = {}
+# Number of recent movements to consider for stabilization
+MOVEMENT_HISTORY_SIZE = 5
 
 def base64_to_image(base64_string):
     """Convert base64 string to PIL Image"""
@@ -70,60 +104,40 @@ def image_to_hash(image):
 
 # Add a new function for direct image comparison
 def compare_images(img1, img2):
-    """Compare two images directly and return similarity score"""
-    # Resize images to ensure consistent comparison
-    img1 = img1.resize((64, 64))  # Increased resolution for better discrimination
-    img2 = img2.resize((64, 64))
+    """Compare two images directly and return similarity score using a more reliable method"""
+    # Resize images to a standard size
+    img1 = img1.resize((32, 32))
+    img2 = img2.resize((32, 32))
     
     # Convert to grayscale
     img1 = img1.convert('L')
     img2 = img2.convert('L')
     
-    # Apply some blur to reduce noise (reduced radius for better detail preservation)
-    img1 = img1.filter(ImageFilter.GaussianBlur(radius=1))
-    img2 = img2.filter(ImageFilter.GaussianBlur(radius=1))
-    
-    # Normalize the images to enhance contrast
-    img1 = ImageOps.equalize(img1)
-    img2 = ImageOps.equalize(img2)
+    # Apply moderate blur to reduce noise from camera sensor and lighting
+    img1 = img1.filter(ImageFilter.GaussianBlur(radius=1.5))
+    img2 = img2.filter(ImageFilter.GaussianBlur(radius=1.5))
     
     # Convert to numpy arrays
-    arr1 = np.array(img1).flatten().astype(float)
-    arr2 = np.array(img2).flatten().astype(float)
+    arr1 = np.array(img1).astype(float)
+    arr2 = np.array(img2).astype(float)
     
-    # Normalize the arrays
-    arr1 = arr1 / 255.0
-    arr2 = arr2 / 255.0
+    # Normalize the arrays to account for lighting changes
+    arr1 = (arr1 - np.mean(arr1)) / (np.std(arr1) + 1e-5)
+    arr2 = (arr2 - np.mean(arr2)) / (np.std(arr2) + 1e-5)
     
-    # Calculate mean squared error (lower is better)
-    mse = np.mean((arr1 - arr2) ** 2)
+    # Calculate absolute difference between the images
+    diff = np.abs(arr1 - arr2)
     
-    # Calculate structural similarity (higher is better)
-    # This is a simplified version of SSIM
-    mean1 = np.mean(arr1)
-    mean2 = np.mean(arr2)
-    var1 = np.var(arr1)
-    var2 = np.var(arr2)
-    covar = np.mean((arr1 - mean1) * (arr2 - mean2))
+    # Calculate mean absolute difference (MAD)
+    mad = np.mean(diff)
     
-    # Constants to stabilize division
-    C1 = 0.01 ** 2
-    C2 = 0.03 ** 2
+    # Convert to similarity score (0 to 1, where 1 is identical)
+    # Use an exponential function to make the scale more intuitive
+    similarity = np.exp(-mad)
     
-    # Calculate SSIM
-    numerator = (2 * mean1 * mean2 + C1) * (2 * covar + C2)
-    denominator = (mean1 ** 2 + mean2 ** 2 + C1) * (var1 + var2 + C2)
-    ssim = numerator / denominator
-    
-    # Combine MSE and SSIM for a more robust similarity score
-    # Convert MSE to similarity (higher is better)
-    mse_similarity = 1.0 / (1.0 + mse)
-    
-    # Final similarity is weighted average of MSE similarity and SSIM
-    # SSIM is given more weight as it's better at structural comparison
-    similarity = 0.3 * mse_similarity + 0.7 * ssim
-    
-    print(f"Image comparison - MSE: {mse:.4f}, SSIM: {ssim:.4f}, Combined: {similarity:.4f}")
+    # Print debug info occasionally
+    if np.random.random() < 0.05:  # 5% of the time
+        print(f"Image comparison - MAD: {mad:.4f}, Similarity: {similarity:.4f}")
     
     return similarity
 
@@ -392,21 +406,32 @@ def monitor_face():
         # Threshold for considering it a match (0.8 is arbitrary for this simple method)
         threshold = 0.8
         
+        response_data = {}
+        
         if similarity >= threshold:
-            return jsonify({
+            response_data = {
                 'success': True,
                 'message': 'Face match confirmed',
                 'match': True,
                 'confidence': float(similarity)
-            }), 200
+            }
         else:
-            return jsonify({
+            response_data = {
                 'success': False,
                 'message': 'Different person detected',
                 'warning': 'different_person',
                 'match': False,
                 'confidence': float(similarity)
-            }), 200
+            }
+        
+        # Ensure all values are JSON serializable
+        for key in response_data:
+            if isinstance(response_data[key], bool):
+                response_data[key] = bool(response_data[key])
+            elif response_data[key] is None:
+                response_data[key] = "null"
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"Error in monitor_face: {str(e)}")
@@ -414,6 +439,203 @@ def monitor_face():
             'success': False,
             'message': f'Error processing request: {str(e)}',
             'warning': 'processing_error'
+        }), 500
+
+@app.route('/detect-movement', methods=['POST'])
+def detect_movement():
+    """Detect head movement between frames using improved image comparison"""
+    try:
+        data = request.json
+        
+        if not data or 'image' not in data or 'sessionId' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required fields: image and sessionId'
+            }), 400
+        
+        session_id = data['sessionId']
+        
+        # Convert base64 image to PIL Image
+        current_image = base64_to_image(data['image'])
+        
+        # Check if face is present in the image (basic check)
+        if current_image.size[0] < 10 or current_image.size[1] < 10:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid image or no face detected',
+                'warning': 'face_missing'
+            }), 200
+        
+        # Initialize response data
+        response_data = {
+            'success': True,
+            'movement': 0.0,
+            'movementDetected': False,
+            'warning': None,
+            'consecutiveMovements': 0
+        }
+        
+        # Initialize movement history for this session if it doesn't exist
+        if session_id not in recent_movements:
+            recent_movements[session_id] = []
+        
+        # Check if we have previous data for this session
+        if session_id in face_data_cache:
+            prev_image = face_data_cache[session_id]['image']
+            
+            # Compare current and previous images using the improved method
+            similarity = compare_images(current_image, prev_image)
+            
+            # Calculate movement (1 - similarity)
+            movement = 1.0 - similarity
+            
+            # Add current movement to history
+            recent_movements[session_id].append(movement)
+            
+            # Keep only the most recent N movements
+            if len(recent_movements[session_id]) > MOVEMENT_HISTORY_SIZE:
+                recent_movements[session_id] = recent_movements[session_id][-MOVEMENT_HISTORY_SIZE:]
+            
+            # Calculate average movement over recent history for stability
+            avg_movement = sum(recent_movements[session_id]) / len(recent_movements[session_id])
+            
+            # Apply moderate smoothing
+            smoothed_movement = 0.4 * movement + 0.6 * avg_movement
+            
+            # Check if movement exceeds threshold
+            is_movement_detected = smoothed_movement > MOVEMENT_THRESHOLD
+            
+            # Add a moderate time between detections
+            current_time = datetime.now()
+            last_detection_time = face_data_cache[session_id].get('last_detection_time')
+            
+            # Only count as movement if enough time has passed since last detection (1 second)
+            if last_detection_time and (current_time - last_detection_time).total_seconds() < 1.0:
+                is_movement_detected = False
+            
+            # Update consecutive movement count
+            if is_movement_detected:
+                if session_id in movement_counts:
+                    movement_counts[session_id] += 1
+                else:
+                    movement_counts[session_id] = 1
+                # Record the detection time
+                face_data_cache[session_id]['last_detection_time'] = current_time
+            else:
+                # Gradually decrease the count
+                if session_id in movement_counts and movement_counts[session_id] > 0:
+                    movement_counts[session_id] -= 0.5
+                    if movement_counts[session_id] < 0:
+                        movement_counts[session_id] = 0
+                else:
+                    movement_counts[session_id] = 0
+            
+            # Check if consecutive movements exceed the maximum allowed
+            consecutive_movements = movement_counts.get(session_id, 0)
+            if consecutive_movements >= MAX_CONSECUTIVE_MOVEMENTS:
+                response_data['warning'] = 'excessive_movement'
+                # Reset counter after warning
+                movement_counts[session_id] = 0
+            
+            # Update response data - ensure all values are JSON serializable
+            response_data['movement'] = float(smoothed_movement)
+            response_data['rawMovement'] = float(movement)
+            response_data['avgMovement'] = float(avg_movement)
+            response_data['movementDetected'] = bool(is_movement_detected)
+            response_data['consecutiveMovements'] = int(consecutive_movements)
+            response_data['threshold'] = float(MOVEMENT_THRESHOLD)
+            
+            # Add debug info
+            response_data['debug'] = {
+                'historySize': len(recent_movements[session_id]),
+                'threshold': MOVEMENT_THRESHOLD,
+                'maxConsecutive': MAX_CONSECUTIVE_MOVEMENTS,
+                'similarity': float(similarity),
+                'timeSinceLastDetection': (current_time - last_detection_time).total_seconds() if last_detection_time else None
+            }
+        
+        # Store current data for next comparison
+        face_data_cache[session_id] = {
+            'image': current_image,
+            'timestamp': datetime.now().isoformat(),
+            'last_detection_time': face_data_cache.get(session_id, {}).get('last_detection_time')
+        }
+        
+        # Clean up old sessions (optional)
+        if len(face_data_cache) > 1000:
+            # Get sessions older than 1 hour
+            current_time = datetime.now()
+            old_sessions = []
+            for sess_id, data in face_data_cache.items():
+                if sess_id != session_id:
+                    try:
+                        timestamp = datetime.fromisoformat(data['timestamp'])
+                        if (current_time - timestamp).total_seconds() > 3600:
+                            old_sessions.append(sess_id)
+                    except:
+                        old_sessions.append(sess_id)
+            
+            # Remove old sessions
+            for sess_id in old_sessions:
+                face_data_cache.pop(sess_id, None)
+                movement_counts.pop(sess_id, None)
+                if sess_id in recent_movements:
+                    recent_movements.pop(sess_id, None)
+        
+        # Convert any None values to null for JSON compatibility
+        for key in response_data:
+            if response_data[key] is None:
+                response_data[key] = "null"
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"Error in detect_movement: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Error processing request: {str(e)}',
+            'warning': 'processing_error'
+        }), 500
+
+@app.route('/check-multiple-faces', methods=['POST'])
+def check_multiple_faces():
+    """Check if multiple faces are present in the image"""
+    try:
+        data = request.json
+        
+        if not data or 'image' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'Missing required field: image'
+            }), 400
+        
+        # Convert base64 image to PIL Image
+        image = base64_to_image(data['image'])
+        
+        # In a simplified version, we can't reliably detect multiple faces
+        # This would require a face detection library like face_recognition
+        # For now, we'll return a placeholder response
+        
+        response_data = {
+            'success': True,
+            'multipleFaces': False,
+            'message': 'Multiple face detection not available in simplified version'
+        }
+        
+        # Ensure all values are JSON serializable
+        for key in response_data:
+            if isinstance(response_data[key], bool):
+                response_data[key] = bool(response_data[key])
+            elif response_data[key] is None:
+                response_data[key] = "null"
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"Error in check_multiple_faces: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'Error processing request: {str(e)}'
         }), 500
 
 if __name__ == '__main__':

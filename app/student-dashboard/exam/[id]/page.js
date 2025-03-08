@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import FaceMonitor from '@/components/FaceMonitor';
+import FloatingFaceMonitor from '@/components/FloatingFaceMonitor';
 
 export default function ExamPage({ params }) {
     const router = useRouter();
@@ -17,6 +17,8 @@ export default function ExamPage({ params }) {
     const [examCompleted, setExamCompleted] = useState(false);
     const [warningCount, setWarningCount] = useState(0);
     const [warnings, setWarnings] = useState([]);
+    const [showWarning, setShowWarning] = useState(false);
+    const [warningMessage, setWarningMessage] = useState('');
 
     useEffect(() => {
         const fetchExam = async () => {
@@ -145,6 +147,15 @@ export default function ExamPage({ params }) {
             }
         ]);
         
+        // Show warning banner
+        setWarningMessage(message);
+        setShowWarning(true);
+        
+        // Hide warning after 3 seconds
+        setTimeout(() => {
+            setShowWarning(false);
+        }, 3000);
+        
         // Log warning
         console.warn(`Face monitoring warning: ${warningType} - ${message}`);
     };
@@ -218,6 +229,28 @@ export default function ExamPage({ params }) {
 
     return (
         <div className="min-h-screen bg-gray-50">
+            {/* Floating Face Monitor */}
+            <FloatingFaceMonitor 
+                onWarning={handleFaceWarning}
+                movementThreshold={20}
+                maxConsecutiveMovements={3}
+                monitoringInterval={1500}
+            />
+            
+            {/* Warning Banner */}
+            {showWarning && (
+                <div className="fixed top-0 left-0 right-0 bg-red-500 text-white p-2 text-center z-40">
+                    <div className="max-w-7xl mx-auto px-4">
+                        <div className="flex items-center justify-center">
+                            <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span>{warningMessage}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                     {/* Main Exam Content */}
@@ -305,33 +338,46 @@ export default function ExamPage({ params }) {
                     <div className="lg:col-span-1">
                         <div className="bg-white overflow-hidden shadow-sm rounded-lg mb-6">
                             <div className="p-4 bg-white border-b border-gray-200">
-                                <h2 className="text-lg font-medium text-gray-900">Face Monitoring</h2>
+                                <h2 className="text-lg font-medium text-gray-900">Exam Progress</h2>
                             </div>
                             <div className="p-4">
-                                <FaceMonitor 
-                                    onWarning={handleFaceWarning}
-                                    onError={handleFaceError}
-                                    monitoringInterval={5000}
-                                />
+                                <div className="mb-4">
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-sm font-medium text-gray-700">Progress</span>
+                                        <span className="text-sm font-medium text-gray-700">
+                                            {Math.round((Object.keys(answers).length / exam.questions.length) * 100)}%
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                        <div 
+                                            className="bg-blue-600 h-2 rounded-full" 
+                                            style={{ width: `${(Object.keys(answers).length / exam.questions.length) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                                
+                                <div className="text-sm text-gray-600 mb-4">
+                                    <div className="flex justify-between">
+                                        <span>Questions Answered:</span>
+                                        <span className="font-medium">{Object.keys(answers).length} of {exam.questions.length}</span>
+                                    </div>
+                                    <div className="flex justify-between mt-1">
+                                        <span>Time Remaining:</span>
+                                        <span className="font-medium">{formatTime(timeLeft)}</span>
+                                    </div>
+                                </div>
                                 
                                 {warningCount > 0 && (
-                                    <div className="mt-4">
+                                    <div className="mt-4 p-3 bg-amber-50 rounded-lg">
                                         <div className="flex items-center text-amber-600 mb-2">
                                             <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                             </svg>
                                             <span className="font-medium">Warnings: {warningCount}</span>
                                         </div>
-                                        
-                                        <div className="max-h-40 overflow-y-auto text-sm">
-                                            {warnings.slice().reverse().map(warning => (
-                                                <div key={warning.id} className="mb-2 p-2 bg-amber-50 rounded">
-                                                    <div className="font-medium">{warning.type}</div>
-                                                    <div>{warning.message}</div>
-                                                    <div className="text-xs text-gray-500">{warning.timestamp}</div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        <p className="text-sm text-amber-700">
+                                            Excessive head movement detected. Please keep your head still during the exam.
+                                        </p>
                                     </div>
                                 )}
                             </div>

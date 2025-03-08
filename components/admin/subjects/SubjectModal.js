@@ -64,7 +64,7 @@ export default function SubjectModal({ subject, onClose, onSuccess }) {
             {subject ? 'Edit Subject' : 'Add New Subject'}
           </h3>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 text-black">
             <div>
               <label
                 htmlFor="name"
@@ -80,7 +80,7 @@ export default function SubjectModal({ subject, onClose, onSuccess }) {
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 text-black focus:outline-none focus:ring-indigo-500 sm:text-sm"
                 required
                 minLength={2}
               />

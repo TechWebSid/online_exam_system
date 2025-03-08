@@ -8,6 +8,7 @@ import ExamAttempt from '@/components/student/ExamAttempt';
 import ExamResult from '@/components/student/ExamResult';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const FLASK_SERVER_URL = process.env.NEXT_PUBLIC_FLASK_URL || 'http://localhost:5001';
 
 export default function StudentDashboard() {
     const router = useRouter();
@@ -17,6 +18,7 @@ export default function StudentDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
+    const [faceServerStatus, setFaceServerStatus] = useState('unknown');
 
     useEffect(() => {
         const checkAuthAndFetchExams = async () => {
@@ -30,6 +32,28 @@ export default function StudentDashboard() {
                 if (!authResponse.ok || authData.user.role !== 'student') {
                     router.replace('/login');
                     return;
+                }
+
+                setUser(authData.user);
+
+                // Check if face monitoring server is running
+                try {
+                    const faceServerResponse = await fetch(`${FLASK_SERVER_URL}/health`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    
+                    if (faceServerResponse.ok) {
+                        setFaceServerStatus('online');
+                    } else {
+                        setFaceServerStatus('offline');
+                        console.warn('Face monitoring server is offline');
+                    }
+                } catch (err) {
+                    setFaceServerStatus('offline');
+                    console.warn('Face monitoring server is not accessible:', err);
                 }
 
                 // Then fetch available exams
@@ -62,11 +86,17 @@ export default function StudentDashboard() {
 
     const handleSubmitExam = async (answers) => {
         try {
+            // Format answers for the API
+            const formattedAnswers = Object.entries(answers).map(([questionId, optionIndex]) => ({
+                questionId,
+                selectedOption: optionIndex
+            }));
+            
             const response = await fetch(`${API_BASE_URL}/student/exams/${selectedExam._id}/submit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ answers })
+                body: JSON.stringify({ answers: formattedAnswers })
             });
 
             const data = await response.json();
@@ -108,6 +138,20 @@ export default function StudentDashboard() {
                 {error && (
                     <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
                         {error}
+                    </div>
+                )}
+                
+                {faceServerStatus === 'offline' && (
+                    <div className="mb-4 p-4 bg-yellow-100 text-yellow-800 rounded-md">
+                        <div className="flex items-center">
+                            <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span>
+                                Face monitoring server is offline. Exam proctoring features may be limited. 
+                                Please contact your administrator.
+                            </span>
+                        </div>
                     </div>
                 )}
 

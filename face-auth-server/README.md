@@ -1,117 +1,113 @@
-# Face Authentication Server
+# Face Authentication and Monitoring Server
 
-A Flask-based microservice for face registration and verification in the Secure Online Exam System.
+This server provides face authentication and monitoring capabilities for the Online Examination System.
 
 ## Features
 
-- Face registration: Register a user's face and store encodings in MongoDB
-- Face verification: Verify a user's face against stored encodings
-- Face monitoring: Continuously monitor a user's face during an exam
-- Anti-cheating measures: Detect multiple faces or absence of a face
+- **Face Registration**: Register a user's face for future authentication
+- **Face Verification**: Verify a user's identity by comparing with registered face
+- **Face Monitoring**: Monitor a user's face during an exam for suspicious activities
+- **Head Movement Detection**: Detect excessive head movements during an exam
+- **Multiple Face Detection**: Detect if multiple faces are present in the frame
 
-## Requirements
+## Setup
 
-- Python 3.8+
-- MongoDB
-- face_recognition library (which requires dlib)
-- Flask and other dependencies listed in requirements.txt
-
-## Installation
-
-1. Install the required dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-2. Set up environment variables in `.env` file:
-
-```
-FLASK_APP=app.py
-FLASK_ENV=development
-FLASK_DEBUG=1
-MONGO_URI=mongodb://localhost:27017/
-DB_NAME=exam_system
-COLLECTION_NAME=face_data
-PORT=5001
-ALLOWED_ORIGINS=http://localhost:3000
-```
+1. Make sure you have Python 3.7+ installed
+2. Install the required packages:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Configure the `.env` file with your MongoDB connection details (if needed)
 
 ## Running the Server
 
-Start the Flask server:
+### Standard Version (with face_recognition)
 
-```bash
-python app.py
+The standard version uses the `face_recognition` library for more accurate face detection and recognition.
+
+```
+# Windows
+start.bat
+
+# Linux/Mac
+./start.sh
 ```
 
-The server will run on port 5001 by default.
+### Simplified Version (without face_recognition)
+
+The simplified version uses basic image comparison techniques and doesn't require the `face_recognition` library.
+
+```
+# Windows
+start_simplified.bat
+
+# Linux/Mac
+python app_simplified.py
+```
 
 ## API Endpoints
 
 ### Health Check
-
 ```
 GET /health
 ```
 
-Returns the health status of the server.
-
-### Register Face
-
+### Face Registration
 ```
 POST /register
-```
-
-Register a face for a user.
-
-**Request Body:**
-```json
 {
-  "userId": "user_id",
-  "name": "User Name",
-  "image": "base64_encoded_image"
+  "userId": "user123",
+  "image": "base64-encoded-image"
 }
 ```
 
-### Verify Face
-
+### Face Verification
 ```
 POST /verify
-```
-
-Verify a face against stored face encodings.
-
-**Request Body:**
-```json
 {
-  "image": "base64_encoded_image",
-  "userId": "optional_user_id"
+  "userId": "user123",
+  "image": "base64-encoded-image"
 }
 ```
 
-### Monitor Face
-
+### Face Monitoring
 ```
 POST /monitor
-```
-
-Monitor a face during an exam.
-
-**Request Body:**
-```json
 {
-  "userId": "user_id",
-  "image": "base64_encoded_image"
+  "userId": "user123",
+  "image": "base64-encoded-image"
 }
 ```
 
-## Integration with Node.js Backend
+### Head Movement Detection
+```
+POST /detect-movement
+{
+  "sessionId": "exam_session_123",
+  "image": "base64-encoded-image"
+}
+```
 
-The Node.js backend should communicate with this Flask server to handle face authentication requests. See the main project documentation for details on integration.
+### Multiple Face Detection
+```
+POST /check-multiple-faces
+{
+  "image": "base64-encoded-image"
+}
+```
 
-## Notes
+## Integration with the Exam System
 
-- The face_recognition library uses dlib which requires C++ build tools. If you encounter installation issues, refer to the dlib installation guide.
-- For production deployment, consider using gunicorn or a similar WSGI server.
-- Ensure MongoDB is running and accessible from the server. 
+The face monitoring server works alongside the main exam application:
+
+1. The exam application captures frames from the user's webcam
+2. These frames are sent to the face monitoring server for analysis
+3. The server detects suspicious activities (head movement, multiple faces, etc.)
+4. The exam application displays warnings based on the server's response
+
+## Troubleshooting
+
+- If you encounter issues with the `face_recognition` library, try using the simplified version
+- Make sure your webcam is properly connected and accessible
+- Check that the server is running on the expected port (default: 5001)
+- Ensure CORS is properly configured if the exam application is running on a different domain 
