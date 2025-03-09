@@ -4,6 +4,17 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Webcam from 'react-webcam';
 
+// Add styles for the countdown animation
+const styles = {
+    '@keyframes countdown': {
+        '0%': { width: '100%' },
+        '100%': { width: '0%' }
+    },
+    animateCountdown: {
+        animation: 'countdown 10s linear forwards'
+    }
+};
+
 export default function ExamAttempt({ exam, onSubmit, onCancel }) {
     const router = useRouter();
     const [timeLeft, setTimeLeft] = useState(exam.duration * 60); // Convert minutes to seconds
@@ -25,6 +36,10 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
     const [sessionId, setSessionId] = useState('');
     const [debugInfo, setDebugInfo] = useState(null);
     const [showDebug, setShowDebug] = useState(false);
+    
+    // Warning limit settings
+    const MAX_WARNINGS_ALLOWED = 5;
+    const [isExamCancelling, setIsExamCancelling] = useState(false);
     
     // Face monitoring refs
     const webcamRef = useRef(null);
@@ -296,19 +311,44 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
         
         // Only show warning if cooldown period has passed
         if (timeElapsed >= warningCooldownMs) {
-            setWarningMessage(message);
-            setShowWarning(true);
-            setWarningCount(prev => prev + 1);
-            setLastWarningTime(now);
+            // Increment warning count
+            const newWarningCount = warningCount + 1;
+            setWarningCount(newWarningCount);
             
-            // Log warning for debugging
-            console.log(`Warning triggered: ${message} (warnings so far: ${warningCount + 1})`);
-            
-            setTimeout(() => {
-                setShowWarning(false);
-            }, 3000);
+            // Check if warning limit has been reached
+            if (newWarningCount >= MAX_WARNINGS_ALLOWED && !isExamCancelling) {
+                // Set cancellation flag to prevent multiple cancellations
+                setIsExamCancelling(true);
+                
+                // Show final warning message
+                setWarningMessage(`${message} - WARNING: This is your ${newWarningCount}th warning. Your exam will be automatically cancelled in 10 seconds.`);
+                setShowWarning(true);
+                setLastWarningTime(now);
+                
+                // Log warning for debugging
+                console.log(`Final warning triggered: ${message} (warnings: ${newWarningCount}/${MAX_WARNINGS_ALLOWED})`);
+                
+                // Set a timeout to cancel the exam after 10 seconds
+                setTimeout(() => {
+                    console.log('Auto-cancelling exam due to excessive warnings');
+                    onCancel();
+                }, 10000);
+            } else {
+                // Show regular warning message with count
+                const remainingWarnings = MAX_WARNINGS_ALLOWED - newWarningCount;
+                setWarningMessage(`${message} - WARNING: This is warning ${newWarningCount}/${MAX_WARNINGS_ALLOWED}. Your exam will be cancelled after ${remainingWarnings} more warnings.`);
+                setShowWarning(true);
+                setLastWarningTime(now);
+                
+                // Log warning for debugging
+                console.log(`Warning triggered: ${message} (warnings: ${newWarningCount}/${MAX_WARNINGS_ALLOWED})`);
+                
+                setTimeout(() => {
+                    setShowWarning(false);
+                }, 3000);
+            }
         }
-    }, [lastWarningTime, warningCount, warningCooldownMs]);
+    }, [lastWarningTime, warningCount, warningCooldownMs, MAX_WARNINGS_ALLOWED, isExamCancelling, onCancel]);
 
     // Add tab switching detection
     useEffect(() => {
@@ -449,7 +489,20 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
                             )}
                         </div>
                         <div className="p-2 text-xs text-gray-700">
-                            <p>Warnings: {warningCount}</p>
+                            <p className="flex items-center">
+                                Warnings: 
+                                <span className={`ml-1 font-medium ${
+                                    warningCount === 0 ? 'text-green-500' : 
+                                    warningCount < 3 ? 'text-yellow-500' : 
+                                    warningCount < MAX_WARNINGS_ALLOWED ? 'text-orange-500' : 
+                                    'text-red-500'
+                                }`}>
+                                    {warningCount}/{MAX_WARNINGS_ALLOWED}
+                                </span>
+                                {warningCount >= 3 && warningCount < MAX_WARNINGS_ALLOWED && (
+                                    <span className="ml-1 text-red-500 animate-pulse">⚠️</span>
+                                )}
+                            </p>
                             <p>Time left: {formatTime(timeLeft)}</p>
                             <button 
                                 onClick={toggleDebug} 
@@ -476,16 +529,36 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
             
             {/* Warning message */}
             {showWarning && (
-                <div className="fixed top-4 right-4 z-50 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-md max-w-md animate-fade-in">
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded shadow-md max-w-md animate-fade-in ${
+                    isExamCancelling 
+                        ? 'bg-red-600 text-white border-l-4 border-red-800' 
+                        : 'bg-red-100 border-l-4 border-red-500 text-red-700'
+                }`}>
                     <div className="flex">
                         <div className="py-1">
-                            <svg className="h-6 w-6 text-red-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className={`h-6 w-6 ${isExamCancelling ? 'text-white' : 'text-red-500'} mr-4`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
                         </div>
                         <div>
-                            <p className="font-bold">Warning</p>
+                            <p className="font-bold">{isExamCancelling ? 'FINAL WARNING' : 'Warning'}</p>
                             <p className="text-sm">{warningMessage}</p>
+                            {isExamCancelling && (
+                                <div className="mt-2 bg-red-700 h-1 rounded-full overflow-hidden">
+                                    <div 
+                                        className="bg-white h-full" 
+                                        style={{
+                                            animation: 'countdown 10s linear forwards'
+                                        }}
+                                    />
+                                    <style jsx>{`
+                                        @keyframes countdown {
+                                            0% { width: 100%; }
+                                            100% { width: 0%; }
+                                        }
+                                    `}</style>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

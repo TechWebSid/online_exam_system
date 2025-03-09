@@ -41,7 +41,7 @@ CORS(app, origins=os.getenv('ALLOWED_ORIGINS', '*').split(','))
 
 # MongoDB connection
 mongo_uri = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
-db_name = os.getenv('DB_NAME', 'exam_system')
+db_name = os.getenv('DB_NAME', 'exam-system')
 collection_name = os.getenv('COLLECTION_NAME', 'face_data')
 
 client = MongoClient(mongo_uri)

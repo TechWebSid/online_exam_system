@@ -7,7 +7,7 @@ load_dotenv()
 
 # MongoDB connection parameters
 mongo_uri = os.getenv('MONGO_URI', 'mongodb://localhost:27017/')
-db_name = os.getenv('DB_NAME', 'exam_system')
+db_name = os.getenv('DB_NAME', 'exam-system')
 collection_name = os.getenv('COLLECTION_NAME', 'face_data')
 
 # Create MongoDB client
