@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
 
 const FaceCapture = ({ onCapture, buttonText = 'Capture', width = 320, height = 240 }) => {

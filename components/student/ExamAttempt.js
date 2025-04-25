@@ -47,7 +47,7 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
     const containerRef = useRef(null);
     
     // Monitoring settings
-    const monitoringInterval = 1500; // Check every 1.5 seconds for better responsiveness
+    const monitoringInterval = 1000; // Check every 1.5 seconds for better responsiveness
     const warningCooldownMs = 8000; // 8 seconds cooldown between warnings
     const [lastWarningTime, setLastWarningTime] = useState(0);
     const [isWarmupPeriod, setIsWarmupPeriod] = useState(true);

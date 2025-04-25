@@ -1,0 +1,3 @@
+@echo off
+echo Starting chatbot server...
+python app.py 
