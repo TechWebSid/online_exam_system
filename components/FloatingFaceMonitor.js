@@ -22,6 +22,8 @@ const FloatingFaceMonitor = ({
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const [status, setStatus] = useState('Loading...');
+    const [lastWarningTime, setLastWarningTime] = useState(0);
+    const warningCooldown = 4000; // 4 seconds cooldown for warnings
     
     const webcamRef = useRef(null);
     const modelRef = useRef(null);
@@ -114,7 +116,6 @@ const FloatingFaceMonitor = ({
             const video = webcamRef.current.video;
             if (!video || video.readyState !== 4) return;
             
-            // Make detections with lighter settings
             const predictions = await modelRef.current.estimateFaces({
                 input: video,
                 returnTensors: false,
@@ -125,22 +126,21 @@ const FloatingFaceMonitor = ({
             if (predictions.length > 0) {
                 const currentPositions = predictions[0].scaledMesh;
                 
-                // If we have previous positions, calculate movement
                 if (previousPositionsRef.current) {
                     const movement = calculateMovement(currentPositions, previousPositionsRef.current);
+                    const currentTime = Date.now();
+                    const timeSinceLastWarning = currentTime - lastWarningTime;
                     
                     // Check if movement exceeds threshold
                     if (movement > movementThreshold) {
                         setConsecutiveMovements(prev => prev + 1);
                         
-                        // If consecutive movements exceed the maximum allowed
-                        if (consecutiveMovements + 1 >= maxConsecutiveMovements) {
-                            // Call the warning callback
+                        // If consecutive movements exceed the maximum allowed and cooldown period has passed
+                        if (consecutiveMovements + 1 >= maxConsecutiveMovements && timeSinceLastWarning >= warningCooldown) {
                             if (onWarning) {
                                 onWarning('excessive_movement', 'Excessive head movement detected. Please keep your head still.');
+                                setLastWarningTime(currentTime);
                             }
-                            
-                            // Reset consecutive movements after warning
                             setConsecutiveMovements(0);
                         }
                     } else {
@@ -149,23 +149,25 @@ const FloatingFaceMonitor = ({
                     }
                 }
                 
-                // Update previous positions
                 previousPositionsRef.current = currentPositions;
             } else {
                 // No face detected
                 previousPositionsRef.current = null;
+                const currentTime = Date.now();
+                if (currentTime - lastWarningTime >= warningCooldown) {
+                    onWarning('no_face', 'No face detected. Please stay within camera view.');
+                    setLastWarningTime(currentTime);
+                }
             }
         } catch (error) {
             console.error('Error detecting face:', error);
         }
-    }, [isModelLoaded, isMonitoring, consecutiveMovements, movementThreshold, maxConsecutiveMovements, onWarning]);
+    }, [isModelLoaded, isMonitoring, consecutiveMovements, movementThreshold, maxConsecutiveMovements, onWarning, lastWarningTime]);
 
     // Start monitoring when component mounts and model is loaded
     useEffect(() => {
         if (isMonitoring && isModelLoaded) {
-            // Use a longer interval for CPU-based detection to reduce performance impact
-            const actualInterval = Math.max(monitoringInterval, 1500); // Ensure at least 1.5 seconds between checks
-            intervalRef.current = setInterval(detectFace, actualInterval);
+            intervalRef.current = setInterval(detectFace, monitoringInterval);
         }
         
         return () => {

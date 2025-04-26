@@ -106,16 +106,16 @@ def image_to_hash(image):
 def compare_images(img1, img2):
     """Compare two images directly and return similarity score using a more reliable method"""
     # Resize images to a standard size
-    img1 = img1.resize((32, 32))
-    img2 = img2.resize((32, 32))
+    img1 = img1.resize((64, 64))  # Increase from 32x32 for more detail preservation
+    img2 = img2.resize((64, 64))
     
     # Convert to grayscale
     img1 = img1.convert('L')
     img2 = img2.convert('L')
     
-    # Apply moderate blur to reduce noise from camera sensor and lighting
-    img1 = img1.filter(ImageFilter.GaussianBlur(radius=1.5))
-    img2 = img2.filter(ImageFilter.GaussianBlur(radius=1.5))
+    # Apply lighter blur to preserve facial features better
+    img1 = img1.filter(ImageFilter.GaussianBlur(radius=1.0))  # Reduced from 1.5
+    img2 = img2.filter(ImageFilter.GaussianBlur(radius=1.0))
     
     # Convert to numpy arrays
     arr1 = np.array(img1).astype(float)
@@ -131,13 +131,39 @@ def compare_images(img1, img2):
     # Calculate mean absolute difference (MAD)
     mad = np.mean(diff)
     
-    # Convert to similarity score (0 to 1, where 1 is identical)
-    # Use an exponential function to make the scale more intuitive
-    similarity = np.exp(-mad)
+    # Calculate a similarity score based on regions
+    # Divide image into regions and compare them separately
+    # This makes the algorithm more robust to changes in expression and position
+    
+    # Create a 4x4 grid of regions
+    region_scores = []
+    rows, cols = arr1.shape
+    region_rows, region_cols = rows // 4, cols // 4
+    
+    for i in range(4):
+        for j in range(4):
+            r_start, r_end = i * region_rows, (i + 1) * region_rows
+            c_start, c_end = j * region_cols, (j + 1) * region_cols
+            
+            region1 = arr1[r_start:r_end, c_start:c_end]
+            region2 = arr2[r_start:r_end, c_start:c_end]
+            
+            region_diff = np.abs(region1 - region2)
+            region_mad = np.mean(region_diff)
+            region_similarity = np.exp(-region_mad)
+            region_scores.append(region_similarity)
+    
+    # Sort region scores and take the average of the best 10 regions (out of 16)
+    # This allows for some facial regions to change while still maintaining a match
+    region_scores.sort(reverse=True)
+    best_regions_similarity = np.mean(region_scores[:10])
+    
+    # Blend with the overall similarity for a balanced approach
+    similarity = 0.7 * best_regions_similarity + 0.3 * np.exp(-mad)
     
     # Print debug info occasionally
     if np.random.random() < 0.05:  # 5% of the time
-        print(f"Image comparison - MAD: {mad:.4f}, Similarity: {similarity:.4f}")
+        print(f"Image comparison - MAD: {mad:.4f}, Overall: {np.exp(-mad):.4f}, Best Regions: {best_regions_similarity:.4f}, Final: {similarity:.4f}")
     
     return similarity
 
@@ -179,22 +205,61 @@ def register_face():
                 # Resize to reasonable dimensions
                 image = image.resize((1000, int(1000 * image.height / image.width)))
                 print(f"Image resized to {image.width}x{image.height}")
+                
+            # Create variations of the image for more robust matching
+            variations = []
+            
+            # Original image
+            variations.append(image.copy())
+            
+            # Slightly shifted to simulate position changes (4 variations)
+            for dx, dy in [(5, 0), (-5, 0), (0, 5), (0, -5)]:
+                shifted = Image.new('RGBA', image.size, (0, 0, 0, 0))
+                shifted.paste(image, (dx, dy))
+                variations.append(shifted.convert('RGB'))
+                
+            # Small rotation variations (2 variations)
+            for angle in [2, -2]:
+                rotated = image.rotate(angle, resample=Image.BICUBIC, expand=False)
+                variations.append(rotated)
+                
+            # Slightly different brightness/contrast (2 variations)
+            brighter = ImageOps.autocontrast(image, cutoff=3)
+            variations.append(brighter)
+            
+            darker = Image.new('RGB', image.size)
+            for x in range(image.width):
+                for y in range(image.height):
+                    r, g, b = image.getpixel((x, y))
+                    darker.putpixel((x, y), (int(r*0.95), int(g*0.95), int(b*0.95)))
+            variations.append(darker)
+            
         except Exception as e:
             return jsonify({
                 'success': False,
                 'message': f'Invalid image data: {str(e)}'
             }), 400
         
-        # Generate image hash
+        # Convert each variation to base64 for storage
+        variation_data = []
+        for i, var_img in enumerate(variations):
+            # Convert to base64
+            buffered = io.BytesIO()
+            var_img.save(buffered, format="JPEG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            variation_data.append({
+                'index': i,
+                'data': 'data:image/jpeg;base64,' + img_str
+            })
+            
+        # Generate image hash for the original image
         image_hash = image_to_hash(image)
         print(f"Generated hash for registration image: {image_hash[:10]}...")
         
         # Check if user already has a face registered
         existing_face = face_collection.find_one({'userId': data['userId']})
         
-        # Store the original image data for better comparison later
-        # In a production system, you might want to store this in a file system or object storage
-        # For simplicity, we'll store it in the database
+        # Store the original image data and variations
         image_data = data['image']  # Keep the base64 string
         
         if existing_face:
@@ -205,6 +270,7 @@ def register_face():
                     '$set': {
                         'faceHash': image_hash,
                         'imageData': image_data,  # Store the original image data
+                        'variations': variation_data,  # Store variations
                         'name': data['name'],
                         'updatedAt': datetime.now()
                     }
@@ -219,6 +285,7 @@ def register_face():
                 'name': data['name'],
                 'faceHash': image_hash,
                 'imageData': image_data,  # Store the original image data
+                'variations': variation_data,  # Store variations
                 'isVerified': False,
                 'registeredAt': datetime.now(),
                 'lastVerifiedAt': None,
@@ -281,42 +348,60 @@ def verify_face():
         # Check for matches using direct image comparison
         best_match = None
         best_match_similarity = 0  # Higher is better
+        best_variation_index = -1
         
         for face_data in registered_faces:
             # First try hash comparison for quick match
             if face_data['faceHash'] == image_hash:
                 similarity = 1.0  # Perfect match
                 print(f"Perfect hash match found for user {face_data['userId']}")
-            else:
-                # If we have the stored image data, use direct image comparison
-                if 'imageData' in face_data and face_data['imageData']:
-                    try:
-                        # Convert stored image data back to PIL Image
-                        stored_image = base64_to_image(face_data['imageData'])
-                        # Use direct image comparison
-                        similarity = compare_images(image, stored_image)
-                        print(f"Direct image comparison for user {face_data['userId']}: {similarity:.4f}")
-                    except Exception as e:
-                        print(f"Error comparing images: {str(e)}")
-                        # Fallback to hash comparison
-                        matching_chars = sum(c1 == c2 for c1, c2 in zip(face_data['faceHash'], image_hash))
-                        similarity = matching_chars / len(image_hash)
-                        print(f"Fallback to hash similarity for user {face_data['userId']}: {similarity:.4f}")
-                else:
-                    # Fallback to hash comparison
-                    matching_chars = sum(c1 == c2 for c1, c2 in zip(face_data['faceHash'], image_hash))
-                    similarity = matching_chars / len(image_hash)
-                    print(f"Hash similarity for user {face_data['userId']}: {similarity:.4f}")
-            
-            if similarity > best_match_similarity:
-                best_match_similarity = similarity
                 best_match = face_data
+                best_match_similarity = similarity
+                break
+            
+            # Check all variations
+            current_best_similarity = 0
+            current_best_variation = -1
+            
+            # Try the original image first
+            if 'imageData' in face_data and face_data['imageData']:
+                try:
+                    stored_image = base64_to_image(face_data['imageData'])
+                    similarity = compare_images(image, stored_image)
+                    if similarity > current_best_similarity:
+                        current_best_similarity = similarity
+                        current_best_variation = 0
+                except Exception as e:
+                    print(f"Error comparing with original image: {str(e)}")
+            
+            # Try all stored variations if available
+            if 'variations' in face_data and face_data['variations']:
+                for variation in face_data['variations']:
+                    try:
+                        var_image = base64_to_image(variation['data'])
+                        similarity = compare_images(image, var_image)
+                        if similarity > current_best_similarity:
+                            current_best_similarity = similarity
+                            current_best_variation = variation['index']
+                    except Exception as e:
+                        print(f"Error comparing with variation {variation.get('index')}: {str(e)}")
+            
+            # If we didn't find any valid variations, fallback to hash comparison
+            if current_best_similarity == 0:
+                matching_chars = sum(c1 == c2 for c1, c2 in zip(face_data['faceHash'], image_hash))
+                current_best_similarity = matching_chars / len(image_hash)
+            
+            # Update best match if this face is better
+            if current_best_similarity > best_match_similarity:
+                best_match_similarity = current_best_similarity
+                best_match = face_data
+                best_variation_index = current_best_variation
+                print(f"New best match: user {face_data['userId']}, similarity: {best_match_similarity:.4f}, variation: {best_variation_index}")
         
-        # Threshold for considering it a match - increased for better security
-        # SSIM values above 0.7 typically indicate the same person
-        threshold = 0.7
+        # Threshold for considering it a match
+        threshold = 0.6  # Reduced from 0.7 to be more lenient with different expressions
         
-        print(f"Best match similarity: {best_match_similarity:.4f}, threshold: {threshold}")
+        print(f"Best match similarity: {best_match_similarity:.4f}, threshold: {threshold}, variation: {best_variation_index}")
         
         # Additional security check: if we're verifying a specific user,
         # make sure the best match is actually that user
@@ -350,7 +435,8 @@ def verify_face():
                 'match': True,
                 'userId': best_match['userId'],
                 'name': best_match['name'],
-                'confidence': float(best_match_similarity)
+                'confidence': float(best_match_similarity),
+                'bestVariation': best_variation_index
             }), 200
         else:
             return jsonify({
