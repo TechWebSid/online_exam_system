@@ -9,6 +9,34 @@ import {
     UserGroupIcon,
     ClockIcon
 } from '@heroicons/react/24/outline';
+import {
+    Chart as ChartJS,
+    ArcElement,
+    Tooltip,
+    Legend,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    BarElement,
+    Title,
+    RadialLinearScale
+} from 'chart.js';
+import { Doughnut, Bar, Line, PolarArea } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+    ArcElement,
+    Tooltip,
+    Legend,
+    CategoryScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    BarElement,
+    Title,
+    RadialLinearScale
+);
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -22,6 +50,9 @@ export function Reports() {
         averageScore: 0,
         totalStudents: 0
     });
+    const [subjectPerformance, setSubjectPerformance] = useState([]);
+    const [attemptsOverTime, setAttemptsOverTime] = useState([]);
+    const [scoreDistribution, setScoreDistribution] = useState([]);
 
     useEffect(() => {
         fetchResults();
@@ -37,6 +68,9 @@ export function Reports() {
             if (data.success) {
                 setResults(data.data);
                 calculateStats(data.data);
+                analyzeSubjectPerformance(data.data);
+                analyzeAttemptsOverTime(data.data);
+                analyzeScoreDistribution(data.data);
             } else {
                 setError(data.message || 'Failed to fetch results');
             }
@@ -84,6 +118,344 @@ export function Reports() {
             averageScore: totalAttempts ? Math.round(totalPercentages / totalAttempts) : 0,
             totalStudents: uniqueStudents
         });
+    };
+
+    const analyzeSubjectPerformance = (results) => {
+        if (!results || results.length === 0) {
+            setSubjectPerformance([]);
+            return;
+        }
+
+        // Group results by subject
+        const subjectMap = {};
+        
+        results.forEach(result => {
+            const subjectName = result.exam?.subject?.name || 'Unknown Subject';
+            if (!subjectMap[subjectName]) {
+                subjectMap[subjectName] = {
+                    totalAttempts: 0,
+                    passedAttempts: 0,
+                    totalPercentage: 0
+                };
+            }
+            
+            subjectMap[subjectName].totalAttempts++;
+            
+            if (result.obtainedMarks >= (result.exam?.passingMarks || 0)) {
+                subjectMap[subjectName].passedAttempts++;
+            }
+            
+            const percentage = result.exam?.totalMarks 
+                ? (result.obtainedMarks / result.exam.totalMarks) * 100 
+                : 0;
+            subjectMap[subjectName].totalPercentage += percentage;
+        });
+        
+        // Convert to array format for charts
+        const subjectPerformanceData = Object.keys(subjectMap).map(subject => ({
+            subject,
+            totalAttempts: subjectMap[subject].totalAttempts,
+            passRate: Math.round((subjectMap[subject].passedAttempts / subjectMap[subject].totalAttempts) * 100),
+            averageScore: Math.round(subjectMap[subject].totalPercentage / subjectMap[subject].totalAttempts)
+        }));
+        
+        setSubjectPerformance(subjectPerformanceData);
+    };
+
+    const analyzeAttemptsOverTime = (results) => {
+        if (!results || results.length === 0) {
+            setAttemptsOverTime([]);
+            return;
+        }
+        
+        // Group attempts by date
+        const attemptsByDate = {};
+        
+        // Sort results by submission date
+        const sortedResults = [...results].sort((a, b) => 
+            new Date(a.submittedAt) - new Date(b.submittedAt)
+        );
+        
+        sortedResults.forEach(result => {
+            const date = new Date(result.submittedAt);
+            const dateString = date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            
+            if (!attemptsByDate[dateString]) {
+                attemptsByDate[dateString] = {
+                    total: 0,
+                    passed: 0
+                };
+            }
+            
+            attemptsByDate[dateString].total++;
+            
+            if (result.obtainedMarks >= (result.exam?.passingMarks || 0)) {
+                attemptsByDate[dateString].passed++;
+            }
+        });
+        
+        // Convert to array format for charts
+        const attemptsData = Object.keys(attemptsByDate).map(date => ({
+            date,
+            total: attemptsByDate[date].total,
+            passed: attemptsByDate[date].passed
+        }));
+        
+        setAttemptsOverTime(attemptsData);
+    };
+    
+    const analyzeScoreDistribution = (results) => {
+        if (!results || results.length === 0) {
+            setScoreDistribution([]);
+            return;
+        }
+        
+        // Define score ranges
+        const ranges = [
+            { min: 0, max: 20, label: '0-20%' },
+            { min: 21, max: 40, label: '21-40%' },
+            { min: 41, max: 60, label: '41-60%' },
+            { min: 61, max: 80, label: '61-80%' },
+            { min: 81, max: 100, label: '81-100%' }
+        ];
+        
+        // Initialize distribution counts
+        const distribution = ranges.map(range => ({
+            ...range,
+            count: 0
+        }));
+        
+        // Count scores in each range
+        results.forEach(result => {
+            const percentage = result.exam?.totalMarks 
+                ? Math.round((result.obtainedMarks / result.exam.totalMarks) * 100) 
+                : 0;
+                
+            for (const range of distribution) {
+                if (percentage >= range.min && percentage <= range.max) {
+                    range.count++;
+                    break;
+                }
+            }
+        });
+        
+        setScoreDistribution(distribution);
+    };
+
+    // Prepare pass rate gauge chart data
+    const passRateChartData = {
+        labels: ['Passed', 'Failed'],
+        datasets: [
+            {
+                data: [stats.passRate, 100 - stats.passRate],
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.8)',
+                    'rgba(255, 99, 132, 0.8)'
+                ],
+                borderColor: [
+                    'rgb(75, 192, 192)',
+                    'rgb(255, 99, 132)'
+                ],
+                borderWidth: 1,
+                cutout: '70%',
+                borderRadius: 10,
+            },
+        ],
+    };
+
+    const passRateOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return `${context.label}: ${context.raw}%`;
+                    }
+                }
+            }
+        },
+        animation: {
+            animateRotate: true,
+            animateScale: true
+        }
+    };
+
+    // Subject performance chart data
+    const subjectPerformanceChartData = {
+        labels: subjectPerformance.map(item => item.subject),
+        datasets: [
+            {
+                label: 'Pass Rate (%)',
+                data: subjectPerformance.map(item => item.passRate),
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgb(54, 162, 235)',
+                borderWidth: 1,
+                borderRadius: 5
+            },
+            {
+                label: 'Average Score (%)',
+                data: subjectPerformance.map(item => item.averageScore),
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                borderColor: 'rgb(75, 192, 192)',
+                borderWidth: 1,
+                borderRadius: 5
+            }
+        ]
+    };
+
+    const subjectPerformanceOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            title: {
+                display: true,
+                text: 'Subject Performance',
+                font: {
+                    size: 16
+                }
+            },
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                title: {
+                    display: true,
+                    text: 'Percentage (%)'
+                }
+            }
+        }
+    };
+
+    // Attempts over time line chart
+    const attemptsChartData = {
+        labels: attemptsOverTime.map(item => item.date),
+        datasets: [
+            {
+                label: 'Total Attempts',
+                data: attemptsOverTime.map(item => item.total),
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'rgb(54, 162, 235)',
+                pointRadius: 4,
+                pointHoverRadius: 6
+            },
+            {
+                label: 'Passed Attempts',
+                data: attemptsOverTime.map(item => item.passed),
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                tension: 0.3,
+                fill: true,
+                pointBackgroundColor: 'rgb(75, 192, 192)',
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }
+        ]
+    };
+
+    const attemptsChartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            title: {
+                display: true,
+                text: 'Exam Attempts Over Time',
+                font: {
+                    size: 16
+                }
+            },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Number of Attempts'
+                },
+                ticks: {
+                    precision: 0
+                }
+            }
+        },
+        interaction: {
+            mode: 'nearest',
+            axis: 'x',
+            intersect: false
+        }
+    };
+
+    // Score distribution chart
+    const scoreDistributionData = {
+        labels: scoreDistribution.map(item => item.label),
+        datasets: [
+            {
+                data: scoreDistribution.map(item => item.count),
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.7)',
+                    'rgba(255, 159, 64, 0.7)',
+                    'rgba(255, 205, 86, 0.7)',
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(54, 162, 235, 0.7)'
+                ],
+                borderColor: [
+                    'rgb(255, 99, 132)',
+                    'rgb(255, 159, 64)',
+                    'rgb(255, 205, 86)',
+                    'rgb(75, 192, 192)',
+                    'rgb(54, 162, 235)'
+                ],
+                borderWidth: 1
+            }
+        ]
+    };
+
+    const scoreDistributionOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+            },
+            title: {
+                display: true,
+                text: 'Score Distribution',
+                font: {
+                    size: 16
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return `${context.label}: ${context.raw} students`;
+                    }
+                }
+            }
+        },
+        animation: {
+            animateRotate: true,
+            animateScale: true
+        }
     };
 
     const formatDate = (dateString) => {
@@ -160,6 +532,66 @@ export function Reports() {
                             <p className="text-sm font-medium text-gray-600">Total Students</p>
                             <p className="text-2xl font-semibold text-gray-900">{stats.totalStudents}</p>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Charts Section - First Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                {/* Pass Rate Gauge */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Pass Rate</h3>
+                    <div className="h-72 relative">
+                        <Doughnut data={passRateChartData} options={passRateOptions} />
+                        <div className="absolute inset-0 flex items-center justify-center flex-col">
+                            <span className="text-4xl font-bold text-gray-800">{stats.passRate}%</span>
+                            <span className="text-sm text-gray-500">Pass Rate</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Subject Performance Chart */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Subject Performance</h3>
+                    <div className="h-72">
+                        {subjectPerformance.length > 0 ? (
+                            <Bar data={subjectPerformanceChartData} options={subjectPerformanceOptions} />
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-500">
+                                No subject data available
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Charts Section - Second Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                {/* Total Attempts Over Time Chart */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Attempts Over Time</h3>
+                    <div className="h-72">
+                        {attemptsOverTime.length > 0 ? (
+                            <Line data={attemptsChartData} options={attemptsChartOptions} />
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-500">
+                                No attempts data available
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Score Distribution Chart */}
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Score Distribution</h3>
+                    <div className="h-72">
+                        {scoreDistribution.length > 0 ? (
+                            <PolarArea data={scoreDistributionData} options={scoreDistributionOptions} />
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-gray-500">
+                                No score data available
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -4,6 +4,30 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FaceRegistration from '@/components/FaceRegistration';
 import { getFaceAuthStatus } from '@/utils/api';
+import { Bar, Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 // API base URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -85,6 +109,7 @@ const ProfilePage = () => {
     const [showFaceRegistration, setShowFaceRegistration] = useState(false);
     const [examHistory, setExamHistory] = useState([]);
     const [loadingExams, setLoadingExams] = useState(false);
+    const [chartType, setChartType] = useState('bar'); // 'bar' or 'line'
     const router = useRouter();
 
     // Fetch user profile
@@ -174,6 +199,69 @@ const ProfilePage = () => {
         fetchExamHistory();
     }, [user]);
 
+    // Prepare chart data
+    const prepareChartData = () => {
+        if (!examHistory.length) return null;
+
+        // Sort exams by submission date
+        const sortedExams = [...examHistory].sort((a, b) => 
+            new Date(a.submittedAt) - new Date(b.submittedAt)
+        );
+
+        const labels = sortedExams.map(exam => exam.examTitle);
+        
+        const data = {
+            labels,
+            datasets: [
+                {
+                    label: 'Score (%)',
+                    data: sortedExams.map(exam => parseFloat(exam.score.percentage)),
+                    backgroundColor: 'rgba(53, 162, 235, 0.5)',
+                    borderColor: 'rgb(53, 162, 235)',
+                    borderWidth: 1,
+                },
+                {
+                    label: 'Correct Answers (%)',
+                    data: sortedExams.map(exam => 
+                        (exam.questions.correct / exam.questions.total) * 100
+                    ),
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgb(75, 192, 192)',
+                    borderWidth: 1,
+                }
+            ],
+        };
+
+        return data;
+    };
+
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+            },
+            title: {
+                display: true,
+                text: 'Exam Performance History',
+                font: {
+                    size: 16
+                }
+            },
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                title: {
+                    display: true,
+                    text: 'Percentage (%)'
+                }
+            }
+        }
+    };
+
     // Format date
     const formatDate = (dateString) => {
         const date = new Date(dateString);
@@ -211,6 +299,8 @@ const ProfilePage = () => {
             </div>
         );
     }
+
+    const chartData = prepareChartData();
 
     return (
         <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -280,6 +370,40 @@ const ProfilePage = () => {
                                     {showFaceRegistration && (
                                         <FaceRegistration />
                                     )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Performance Graph Section */}
+                        {examHistory.length > 0 && (
+                            <div className="mt-10">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-medium text-gray-900">Performance Graph</h2>
+                                    <div className="flex space-x-2">
+                                        <button 
+                                            className={`px-3 py-1 rounded-md text-sm ${chartType === 'bar' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                                            onClick={() => setChartType('bar')}
+                                        >
+                                            Bar Chart
+                                        </button>
+                                        <button 
+                                            className={`px-3 py-1 rounded-md text-sm ${chartType === 'line' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700'}`}
+                                            onClick={() => setChartType('line')}
+                                        >
+                                            Line Chart
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                                    <div className="h-80">
+                                        {chartData && (
+                                            chartType === 'bar' ? (
+                                                <Bar data={chartData} options={chartOptions} />
+                                            ) : (
+                                                <Line data={chartData} options={chartOptions} />
+                                            )
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

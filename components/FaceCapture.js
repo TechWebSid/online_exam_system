@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 
 const FaceCapture = ({ onCapture, buttonText = 'Capture', width = 320, height = 240 }) => {
     const [isCameraReady, setIsCameraReady] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [devices, setDevices] = useState([]);
+    const [selectedDevice, setSelectedDevice] = useState(null);
     const webcamRef = useRef(null);
 
     const handleUserMedia = useCallback(() => {
@@ -19,6 +21,33 @@ const FaceCapture = ({ onCapture, buttonText = 'Capture', width = 320, height = 
         setErrorMessage('Camera access denied or not available. Please check your permissions.');
     }, []);
 
+    const getVideoDevices = useCallback(async () => {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            setDevices(videoDevices);
+            
+            // Set the first device as default if none selected
+            if (videoDevices.length > 0 && !selectedDevice) {
+                setSelectedDevice(videoDevices[0].deviceId);
+            }
+        } catch (error) {
+            console.error('Error getting video devices:', error);
+            setErrorMessage('Failed to get camera devices. Please check your permissions.');
+        }
+    }, [selectedDevice]);
+
+    useEffect(() => {
+        getVideoDevices();
+        
+        // Listen for device changes (e.g., when a camera is plugged in/out)
+        navigator.mediaDevices.addEventListener('devicechange', getVideoDevices);
+        
+        return () => {
+            navigator.mediaDevices.removeEventListener('devicechange', getVideoDevices);
+        };
+    }, [getVideoDevices]);
+
     const capture = useCallback(() => {
         if (!webcamRef.current) return;
         
@@ -28,8 +57,32 @@ const FaceCapture = ({ onCapture, buttonText = 'Capture', width = 320, height = 
         }
     }, [onCapture]);
 
+    const handleDeviceChange = (event) => {
+        setSelectedDevice(event.target.value);
+        setIsCameraReady(false); // Reset camera state for new device
+    };
+
     return (
         <div className="flex flex-col items-center">
+            {devices.length > 1 && (
+                <div className="w-full mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Select Camera
+                    </label>
+                    <select
+                        value={selectedDevice || ''}
+                        onChange={handleDeviceChange}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-white"
+                    >
+                        {devices.map((device, index) => (
+                            <option key={device.deviceId} value={device.deviceId}>
+                                {device.label || `Camera ${index + 1}`}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            )}
+            
             <div className="relative mb-4 rounded-lg overflow-hidden border-2 border-gray-300">
                 {errorMessage ? (
                     <div className="bg-red-100 text-red-700 p-4 rounded-lg">
@@ -43,7 +96,7 @@ const FaceCapture = ({ onCapture, buttonText = 'Capture', width = 320, height = 
                         videoConstraints={{
                             width,
                             height,
-                            facingMode: 'user'
+                            deviceId: selectedDevice
                         }}
                         onUserMedia={handleUserMedia}
                         onUserMediaError={handleUserMediaError}

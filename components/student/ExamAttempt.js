@@ -47,6 +47,8 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
     const [sessionId, setSessionId] = useState('');
     const [showDebug, setShowDebug] = useState(true);
     const [showStartModal, setShowStartModal] = useState(true);
+    const [devices, setDevices] = useState([]);
+    const [selectedDevice, setSelectedDevice] = useState(null);
 
     // All refs
     const webcamRef = useRef(null);
@@ -61,8 +63,8 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
     const MAX_WINDOW_LEAVE_TIME = 5000; // 5 seconds max time allowed away
     const monitoringInterval = 1000; // Check every second
     const warmupDurationMs = 3000; // 3 seconds warmup period
-    const MOVEMENT_THRESHOLD = 10; // 10% threshold for movement detection
-    const MOVEMENT_WARNING_COOLDOWN = 3000; // 3 seconds between movement warnings
+    const MOVEMENT_THRESHOLD = 17; // 10% threshold for movement detection
+    const MOVEMENT_WARNING_COOLDOWN = 6000; // 3 seconds between movement warnings
     const FLASK_SERVER_URL = process.env.NEXT_PUBLIC_FLASK_URL || 'http://localhost:5001';
 
     // Timer effect
@@ -550,6 +552,50 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
         }
     }, [showStartModal, captureAndSendFrame]);
 
+    // Add getVideoDevices function
+    const getVideoDevices = useCallback(async () => {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            setDevices(videoDevices);
+            
+            // Set the first device as default if none selected
+            if (videoDevices.length > 0 && !selectedDevice) {
+                setSelectedDevice(videoDevices[0].deviceId);
+            }
+        } catch (error) {
+            console.error('Error getting video devices:', error);
+            setCameraError('Failed to get camera devices. Please check your permissions.');
+        }
+    }, [selectedDevice]);
+
+    // Add device change handler
+    const handleDeviceChange = (event) => {
+        setSelectedDevice(event.target.value);
+        setIsMonitoring(false); // Reset monitoring state
+        setStatus('Switching camera...'); // Update status
+        
+        // Restart monitoring with new device after a short delay
+        setTimeout(() => {
+            if (webcamRef.current && webcamRef.current.video) {
+                setStatus('Camera ready');
+                setIsMonitoring(true);
+            }
+        }, 1000);
+    };
+
+    // Add device enumeration effect
+    useEffect(() => {
+        getVideoDevices();
+        
+        // Listen for device changes
+        navigator.mediaDevices.addEventListener('devicechange', getVideoDevices);
+        
+        return () => {
+            navigator.mediaDevices.removeEventListener('devicechange', getVideoDevices);
+        };
+    }, [getVideoDevices]);
+
     return (
         <div className="relative min-h-screen bg-gray-50 pb-10">
             {/* Initial Start Exam Modal */}
@@ -655,6 +701,21 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
                 
                 {!minimized && (
                     <>
+                        {devices.length > 1 && (
+                            <div className="p-2 border-b border-gray-200">
+                                <select
+                                    value={selectedDevice || ''}
+                                    onChange={handleDeviceChange}
+                                    className="w-full text-xs px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                >
+                                    {devices.map((device, index) => (
+                                        <option key={device.deviceId} value={device.deviceId}>
+                                            {device.label || `Camera ${index + 1}`}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div className="relative">
                             <Webcam
                                 ref={webcamRef}
@@ -663,7 +724,7 @@ export default function ExamAttempt({ exam, onSubmit, onCancel }) {
                                 videoConstraints={{
                                     width: 256,
                                     height: 144,
-                                    facingMode: 'user'
+                                    deviceId: selectedDevice
                                 }}
                                 className="w-full h-auto"
                             />
